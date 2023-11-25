@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Cosmos.HAL;
+using System;
 
 namespace Phoenix.CMD.Logging
 {
@@ -16,43 +17,41 @@ namespace Phoenix.CMD.Logging
         // Print a message to the console with the specified log level
         public static void Print(string Msg, LogType Type)
         {
-            switch (Type)
+            if(Type == LogType.None)
             {
-                case LogType.None:
-                    Console.WriteLine(Msg);
-                    break;
+                Console.WriteLine(Msg);
+            }
+            else
+            {
+                Console.Write("[");
 
-                case LogType.Information:
-                    Console.Write("[");
-                    Console.ForegroundColor = ConsoleColor.Cyan;
-                    Console.Write("INFO");
-                    Console.ResetColor();
-                    Console.WriteLine($"] >> {Msg}");
-                    break;
+                switch (Type)
+                {
+                    case LogType.Information:
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.Write($"INFO@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
+                        break;
 
-                case LogType.Warning:
-                    Console.Write("[");
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.Write("WARN");
-                    Console.ResetColor();
-                    Console.WriteLine($"] >> {Msg}");
-                    break;
+                    case LogType.Warning:
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.Write($"WARN@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
+                        break;
 
-                case LogType.Error:
-                    Console.Write("[");
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.Write("ERROR");
-                    Console.ResetColor();
-                    Console.WriteLine($"] >> {Msg}");
-                    break;
+                    case LogType.Error:
+                        Console.Write("[");
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.Write($"ERROR@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
+                        break;
 
-                case LogType.Debug:
-                    Console.Write("[");
-                    Console.ForegroundColor = ConsoleColor.Magenta;
-                    Console.Write("DEBUG");
-                    Console.ResetColor();
-                    Console.WriteLine($"] >> {Msg}");
-                    break;
+                    case LogType.Debug:
+                        Console.Write("[");
+                        Console.ForegroundColor = ConsoleColor.Magenta;
+                        Console.Write($"DEBUG@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
+                        break;
+                }
+
+                Console.ResetColor();
+                Console.WriteLine($"] >> {Msg}");
             }
         }
     }

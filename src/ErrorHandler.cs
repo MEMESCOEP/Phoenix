@@ -1,4 +1,5 @@
-﻿using Cosmos.HAL;
+﻿using Cosmos.Core;
+using Cosmos.HAL;
 using System;
 using System.Threading;
 
@@ -15,14 +16,16 @@ namespace Phoenix
             Console.Clear();
             Console.Write(new string(' ', Console.WindowWidth * Console.WindowHeight));
             Console.SetCursorPosition(0, 0);
-            Console.WriteLine($"[===== CRITICAL ERROR =====]\nERROR MSG: {Msg}\nERROR CODE: {ErrCode}");
+            Console.WriteLine($"[=============================== CRITICAL ERROR ===============================]ERROR MESSAGE: {Msg}\nERROR CODE: {ErrCode}");
             Console.SetCursorPosition(0, Console.WindowHeight - 1);
-            Console.Write("Press any key to reboot.");
-            Cosmos.System.PCSpeaker.Beep(Cosmos.System.Notes.FS5, Cosmos.System.Durations.Half);
 
             int Second = RTC.Second;
+            Console.Write("Please restart the server.");
 
-            while (!Console.KeyAvailable)
+            // F#5 is equal to 750 Hz; Half duration is equal to 800 ms
+            Cosmos.System.PCSpeaker.Beep(Cosmos.System.Notes.FS5, Cosmos.System.Durations.Half);
+
+            while (true)
             {
                 if ((RTC.Second - Second) > 5)
                 {
@@ -35,8 +38,6 @@ namespace Phoenix
                     }
                 }
             }
-
-            Cosmos.System.Power.Reboot();
         }
         #endregion
     }

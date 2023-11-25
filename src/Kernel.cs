@@ -5,16 +5,50 @@ using Cosmos.System.Network.IPv4;
 using Cosmos.HAL;
 using System;
 using Sys = Cosmos.System;
-using Phoenix.CMD.Logging;
 using Phoenix.Information;
+using Phoenix.CMD.Logging;
+using System.IO;
+using Cosmos.Core.Memory;
 
 namespace Phoenix
 {
     public class Kernel : Sys.Kernel
     {
-        protected override void OnBoot()
+        /* VARIABLES */
+        #region VARIABLES
+        string CurrentWorkingDirectory = string.Empty;
+        #endregion
+
+        /* FUNCTIONS */
+        #region FUNCTIONS
+        public override void Start()
         {
-            Sys.Global.Init(GetTextScreen(), false, true, true, true);
+            try
+            {
+                if (!mStarted)
+                {
+                    mStarted = true;
+                    Bootstrap.Init();
+
+                    // Global init
+                    Sys.Global.Init(GetTextScreen(), true, true, true, true);
+
+                    BeforeRun();
+
+                    while (!mStopped)
+                    {
+                        Run();
+                    }
+                }
+                else
+                {
+                    throw new Exception("The kernel has already been started. A kernel cannot be started twice.");
+                }
+            }
+            catch(Exception ex)
+            {
+                ErrorHandler.CriticalError($"{ex.Message}", ex.HResult.ToString());
+            }
         }
 
         protected override void BeforeRun()
@@ -22,12 +56,40 @@ namespace Phoenix
             try
             {
                 Console.WriteLine($"\n\n\n[===== {OSInfo.Name} {OSInfo.Version} ({OSInfo.Copyright}) =====]");
-                Logger.Print("Kernel loaded.", Logger.LogType.Information);
+                Logger.Print("Kernel loaded and console initialized.", Logger.LogType.Information);
 
                 // FS Initializiation
                 Logger.Print("Initializing filesystem...", Logger.LogType.Information);
                 Sys.FileSystem.CosmosVFS fs = new Sys.FileSystem.CosmosVFS();
                 VFSManager.RegisterVFS(fs);
+
+                if (fs.Disks.Count > 0)
+                {
+                    Logger.Print("Setting the current working directory...", Logger.LogType.Information);
+                    foreach (var disk in fs.Disks)
+                    {
+                        if (disk.Partitions.Count > 0)
+                        {
+                            if (disk.Partitions[0].HasFileSystem && String.IsNullOrEmpty(disk.Partitions[0].RootPath) == false)
+                            {
+                                CurrentWorkingDirectory = disk.Partitions[0].RootPath;
+                                Directory.SetCurrentDirectory(CurrentWorkingDirectory);
+                                Logger.Print($"Working directory is: \"{CurrentWorkingDirectory}\"", Logger.LogType.Information);
+                                break;
+                            }
+                        }
+
+                        else
+                        {
+                            Logger.Print("The main disk doesn't have a root path.", Logger.LogType.Warning);
+                        }
+                    }
+                }
+                else
+                {
+                    Logger.Print("No functioning FAT32/UDF formatted disks are installed, You won't be able to save anything.\n\nPress any key to continue.", Logger.LogType.Warning);
+                    Console.ReadKey();
+                }
 
                 // NIC Initialization
                 Logger.Print("Initializing NICs...", Logger.LogType.Information);
@@ -50,7 +112,7 @@ namespace Phoenix
 
                     if (NetworkConfiguration.CurrentNetworkConfig == null)
                     {
-                        Logger.Print("The network configuration failed!", Logger.LogType.Error);
+                        Logger.Print("Network configuration failed!", Logger.LogType.Error);
                     }
 
                     Logger.Print($"[== NETWORK CONFIGURATION ==]\nIP: {NetworkConfiguration.CurrentAddress.ToString()}\nSubnet: {NetworkConfiguration.CurrentNetworkConfig.IPConfig.SubnetMask.ToString()}\nDefault gateway: {NetworkConfiguration.CurrentNetworkConfig.IPConfig.DefaultGateway.ToString()}\nMAC: {nic.MACAddress.ToString()}\nAdapter: {nic.Name}\nID: {nic.NameID}\n", Logger.LogType.None);
@@ -59,6 +121,10 @@ namespace Phoenix
                 {
                     Logger.Print("There are no supported NICs installed.", Logger.LogType.Warning);
                 }
+
+                // Enable interrupts
+                Logger.Print("Enabling global interrupts...", Logger.LogType.Information);
+                Global.EnableInterrupts();
             }
             catch (Exception ex)
             {
@@ -70,10 +136,11 @@ namespace Phoenix
         {
             try
             {
-                Console.Write(OSInfo.Prompt);
-                var Command = Console.ReadLine();
+                Console.Write($"({CurrentWorkingDirectory}) {OSInfo.Prompt}");
+                var Input = Console.ReadLine();
+                var Args = Input.Split(' ');
 
-                HandleCommand(Command, null);
+                HandleCommand(Args[0], Args);
             }
             catch (Exception ex)
             {
@@ -89,18 +156,49 @@ namespace Phoenix
                 case "turnoff":
                 case "poweroff":
                     Sys.Power.Shutdown();
+                    ErrorHandler.CriticalError("Shutdown failed!", "-256");
                     break;
 
                 case "reboot":
                 case "restart":
                 case "reset":
                     Sys.Power.Reboot();
+                    ErrorHandler.CriticalError("Reboot failed!", "-255");
+                    break;
+
+                case "ls":
+                case "dir":
+                    Logger.Print($"[== {CurrentWorkingDirectory} ==]", Logger.LogType.None);
+
+                    foreach(var entry in Directory.GetFiles(CurrentWorkingDirectory))
+                    {
+                        Logger.Print($"[FILE] {entry}", Logger.LogType.None);
+                    }
+
+                    foreach (var entry in Directory.GetDirectories(CurrentWorkingDirectory))
+                    {
+                        Logger.Print($"[DIR] {entry}", Logger.LogType.None);
+                    }
+
+                    Console.WriteLine();
+                    break;
+
+                case "cd":
+                    CurrentWorkingDirectory = Path.GetFullPath(Arguments[1]);
+                    Directory.SetCurrentDirectory(Path.GetFullPath(Arguments[1]));
                     break;
 
                 case "":
+                    break;
+
                 default:
+                    Logger.Print($"Invalid command: \"{Command}\"", Logger.LogType.Error);
                     break;
             }
+
+            // Call the garbage collector
+            Heap.Collect();
         }
+        #endregion
     }
 }

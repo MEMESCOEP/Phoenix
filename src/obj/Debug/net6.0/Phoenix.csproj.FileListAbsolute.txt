@@ -1,0 +1,12 @@
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\bin\Debug\net6.0\Phoenix.deps.json
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\bin\Debug\net6.0\Phoenix.dll
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\bin\Debug\net6.0\Phoenix.pdb
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.csproj.AssemblyReference.cache
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.AssemblyInfoInputs.cache
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.AssemblyInfo.cs
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.csproj.CoreCompileInputs.cache
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.dll
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\refint\Phoenix.dll
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\Phoenix.pdb
+C:\Users\Andrew\Documents\GitHub\Phoenix\src\obj\Debug\net6.0\ref\Phoenix.dll
