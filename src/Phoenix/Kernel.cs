@@ -106,34 +106,40 @@ namespace Phoenix
 
                 // NIC Initialization
                 Logger.Print("Initializing NICs...", Logger.LogType.Information);
-                NetworkDevice nic = NetworkDevice.GetDeviceByName("eth0");
 
-                if (nic != null)
+                if (NetworkDevice.Devices.Count > 0)
                 {
-                    using (var xClient = new DHCPClient())
+                    foreach (var nic in NetworkDevice.Devices)
                     {
-                        /** Send a DHCP Discover packet **/
-                        //This will automatically set the IP config after DHCP response
-                        xClient.SendDiscoverPacket();
-                    }
+                        //nic != null
+                        using (var xClient = new DHCPClient())
+                        {
+                            /** Send a DHCP Discover packet **/
+                            //This will automatically set the IP config after DHCP response
+                            xClient.SendDiscoverPacket();
+                        }
 
-                    if (NetworkConfiguration.CurrentNetworkConfig == null || NetworkConfiguration.CurrentAddress.ToString() == "0.0.0.0")
-                    {
-                        Logger.Print("DHCP autoconfig failed, fallng back to defaults.", Logger.LogType.Warning);
-                        IPConfig.Enable(nic, new Address(192, 168, 1, 69), new Address(255, 255, 255, 0), new Address(192, 168, 1, 254));
-                    }
+                        if (NetworkConfiguration.CurrentNetworkConfig == null || NetworkConfiguration.CurrentAddress.ToString() == "0.0.0.0")
+                        {
+                            Logger.Print("DHCP autoconfig failed, fallng back to defaults.", Logger.LogType.Warning);
+                            IPConfig.Enable(nic, new Address(192, 168, 1, Convert.ToByte(69 + NetworkDevice.Devices.IndexOf(nic))), new Address(255, 255, 255, 0), new Address(192, 168, 1, 254));
+                        }
 
-                    if (NetworkConfiguration.CurrentNetworkConfig == null)
-                    {
-                        Logger.Print("Network configuration failed!", Logger.LogType.Error);
-                    }
+                        if (NetworkConfiguration.CurrentNetworkConfig == null)
+                        {
+                            Logger.Print("Network configuration failed!", Logger.LogType.Error);
+                            break;
+                        }
 
-                    Logger.Print($"[== NETWORK CONFIGURATION ==]\nIP: {NetworkConfiguration.CurrentAddress.ToString()}\nSubnet: {NetworkConfiguration.CurrentNetworkConfig.IPConfig.SubnetMask.ToString()}\nDefault gateway: {NetworkConfiguration.CurrentNetworkConfig.IPConfig.DefaultGateway.ToString()}\nMAC: {nic.MACAddress.ToString()}\nAdapter: {nic.Name}\nID: {nic.NameID}\n", Logger.LogType.None);
+                        Logger.Print($"[== {nic.Name} ({nic.NameID}) CONFIGURATION ==]\nIP: {NetworkConfiguration.CurrentAddress.ToString()}\nSubnet: {NetworkConfiguration.CurrentNetworkConfig.IPConfig.SubnetMask.ToString()}\nDefault gateway: {NetworkConfiguration.CurrentNetworkConfig.IPConfig.DefaultGateway.ToString()}\nMAC: {nic.MACAddress.ToString()}\nAdapter: {nic.Name}\nID: {nic.NameID}\n", Logger.LogType.None);
+                    }                    
                 }
                 else
                 {
                     Logger.Print("There are no supported NICs installed.", Logger.LogType.Warning);
                 }
+
+                Logger.Print("Init done.", Logger.LogType.Information);
             }
             catch (Exception ex)
             {
