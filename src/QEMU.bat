@@ -1,3 +1,0 @@
-@ECHO OFF
-echo Starting QEMU...
-"C:\Program Files\qemu\qemu-system-x86_64.exe" -cdrom ".\bin\Debug\net6.0\Phoenix.iso" -m 128
