@@ -4,11 +4,18 @@ using Cosmos.System.Network.Config;
 using Cosmos.System.Network.IPv4;
 using Cosmos.Core.Memory;
 using Cosmos.HAL;
+using System.Threading;
 using System.IO;
 using System;
 using Sys = Cosmos.System;
 using Phoenix.Information;
 using Phoenix.CMD.Logging;
+using IL2CPU.API.Attribs;
+using LibDotNetParser.CILApi;
+using PrismAPI.Hardware.GPU;
+using PrismAPI.Graphics;
+using libDotNetClr;
+using Console = System.Console;
 
 namespace Phoenix
 {
@@ -16,7 +23,12 @@ namespace Phoenix
     {
         /* VARIABLES */
         #region VARIABLES
+        [ManifestResourceStream(ResourceName = "Phoenix.Art.Logo.bmp")]
+        static byte[] LogoArray;
+
         string CurrentWorkingDirectory = string.Empty;
+        Canvas LogoBMP = Image.FromBitmap(LogoArray);
+        Sys.FileSystem.CosmosVFS fs;
         #endregion
 
         /* FUNCTIONS */
@@ -58,11 +70,29 @@ namespace Phoenix
                 Console.WriteLine($"\n\n\n[===== {OSInfo.Name} {OSInfo.Version} ({OSInfo.Copyright}) =====]");
                 Logger.Print("Kernel loaded and console initialized.", Logger.LogType.Information);
 
+                try
+                {
+                    Display ScreenCanvas = Display.GetDisplay(640, 480);
+                    ScreenCanvas.DrawImage(0, 0, LogoBMP, true);
+                    ScreenCanvas.DrawString(0, (int)LogoBMP.Height, $"{OSInfo.Name} {OSInfo.Version} ({OSInfo.Copyright})", default, PrismAPI.Graphics.Color.White);
+                    ScreenCanvas.Update();
+                    Thread.Sleep(1000);
+                    ScreenCanvas.IsEnabled = false;
+                }
+                catch(Exception ex)
+                {
+                    Logger.Print($"Boot graphics skipped: {ex.Message}", Logger.LogType.Warning);
+                }
+
+                // Serial initialization
+                Logger.Print("Initializing serial...", Logger.LogType.Information);
+                SerialPort.Enable(COMPort.COM1, BaudRate.BaudRate115200);
+
                 // FS Initializiation
                 Logger.Print("Initializing filesystem...", Logger.LogType.Information);
                 try
                 {
-                    Sys.FileSystem.CosmosVFS fs = new Sys.FileSystem.CosmosVFS();
+                    fs = new Sys.FileSystem.CosmosVFS();
                     VFSManager.RegisterVFS(fs);
 
                     if (fs.Disks.Count > 0)
@@ -167,6 +197,7 @@ namespace Phoenix
         {
             switch(Command)
             {
+                /* POWER */
                 case "shutdown":
                 case "turnoff":
                 case "poweroff":
@@ -179,6 +210,25 @@ namespace Phoenix
                 case "reset":
                     Sys.Power.Reboot();
                     ErrorHandler.CriticalError("Reboot failed!", "-255");
+                    break;
+
+
+
+                /* FILESYSTEM */
+                case "cat":
+                case "read":
+                    Logger.Print(File.ReadAllText(Arguments[1]), Logger.LogType.None);
+                    break;
+
+                case "rm":
+                case "del":
+                    File.Delete(Path.GetFullPath(Arguments[1]));
+                    break;
+
+                case "cp":
+                case "copy":
+                case "duplicate":
+                    File.Copy(Path.GetFullPath(Arguments[1]), Path.GetFullPath(Arguments[2]));
                     break;
 
                 case "ls":
@@ -199,15 +249,132 @@ namespace Phoenix
                     break;
 
                 case "cd":
-                    CurrentWorkingDirectory = Path.GetFullPath(Arguments[1]);
-                    Directory.SetCurrentDirectory(CurrentWorkingDirectory);
+                    var dir = "";
+
+                    if (Arguments.Length <= 1 || string.IsNullOrWhiteSpace(Path.GetFullPath(Arguments[1])))
+                    {
+                        Logger.Print($"A directory name must be specified.\n", Logger.LogType.Error);
+                        break;
+                    }
+
+                    if (Arguments[1].StartsWith("\""))
+                    {
+                        dir = "";
+
+                        foreach (var part in Arguments)
+                        {
+                            dir += part + " ";
+                        }
+
+                        // Get the directory name inside of the quotes
+                        int pFrom = dir.IndexOf("\"") + 1;
+                        int pTo = dir.LastIndexOf("\"");
+                        dir = dir.Substring(pFrom, pTo - pFrom);
+                        dir.Replace($"{Command} ", "").TrimEnd();
+                    }
+                    else
+                    {
+                        dir = Path.GetFullPath(Arguments[1]);
+                    }
+
+                    if (Directory.Exists(dir) == false)
+                    {
+                        Logger.Print($"The directory \"{dir}\" does not exist.\n", Logger.LogType.Error);
+                        break;
+                    }
+
+                    dir = Path.GetFullPath(dir);
+                    CurrentWorkingDirectory = dir;
+                    Directory.SetCurrentDirectory(dir);
                     break;
 
+                case "format":
+                    if(fs.Disks.Count <= 0)
+                    {
+                        Logger.Print("There are no disks to partition", Logger.LogType.Error);
+                        break;
+                    }
+
+                    foreach(var disk in fs.Disks)
+                    {
+                        Console.WriteLine($"[== Disk #{fs.Disks.IndexOf(disk)} ==]");
+                        disk.DisplayInformation();
+                        Console.WriteLine();
+                    }
+
+                    Console.Write($"Choose a disk to format (0-{fs.Disks.Count}) >> ");
+                    int Disk = Convert.ToInt32(Console.ReadLine());
+                    int Partition = 0;
+                    bool QuickFormat = false;
+
+                    if(fs.Disks[Disk].Partitions.Count <= 0)
+                    {
+                        Console.WriteLine($"This disk does not have any partitions, so one will be created.");
+                        Logger.Print($"Creating partition on disk #{Disk}...", Logger.LogType.Information);
+                        fs.Disks[Disk].CreatePartition(fs.Disks[Disk].Size);
+                        Logger.Print($"Partition created.", Logger.LogType.Information);
+                    }
+                    else
+                    {
+                        Console.Write($"Choose a partition to format (0-{fs.Disks[Disk].Partitions.Count}) >> ");
+                        Partition = Convert.ToInt32(Console.ReadLine());
+
+                        Console.Write($"Quick format? (Y/n) >> ");
+                        QuickFormat = Console.ReadLine().ToLower() == "y";
+                    }
+
+                    Logger.Print($"Formatting disk #{Disk} (partition #{Partition}, Quick format: {QuickFormat})...", Logger.LogType.Information);
+                    fs.Disks[Disk].FormatPartition(Partition, "FAT32", QuickFormat);
+                    Logger.Print($"Formatting complete.", Logger.LogType.Information);
+
+                    break;
+
+
+
+                /* CONSOLE */
+                case "clear":
+                case "cls":
+                    Console.Clear();
+                    break;
+
+
+
+                /* MISC */
                 case "":
                     break;
 
                 default:
-                    Logger.Print($"Invalid command: \"{Command}\"\n", Logger.LogType.Error);
+                    if (File.Exists(Path.GetFullPath(Arguments[0])))
+                    {
+                        DotNetFile DotNetFile = new DotNetFile(Path.GetFullPath(Arguments[0]));
+
+                        foreach(var disk in fs.Disks)
+                        {
+                            foreach(var partition in disk.Partitions)
+                            {
+                                if (partition.HasFileSystem == false)
+                                {
+                                    continue;
+                                }
+
+                                var FrameworkPath = $"{partition.MountedFS.GetRootDirectory().mFullPath}\\framework\\";
+
+                                if (Directory.Exists(FrameworkPath))
+                                {
+                                    DotNetClr CLR = new DotNetClr(DotNetFile, FrameworkPath);
+                                    CLR.Start();
+                                    goto StopSearchingDrives;
+                                }
+                            }
+                        }
+
+                    StopSearchingDrives:;
+                    }
+                    else
+                    {
+                        Logger.Print($"Invalid command: \"{Command}\"\n", Logger.LogType.Error);
+                    }
+
                     break;
             }
 

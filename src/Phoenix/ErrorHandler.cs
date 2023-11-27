@@ -1,5 +1,6 @@
 ﻿using Cosmos.Core;
 using Cosmos.HAL;
+using Phoenix.CMD.Logging;
 using System;
 using System.Threading;
 
@@ -16,7 +17,7 @@ namespace Phoenix
             Console.Clear();
             Console.Write(new string(' ', Console.WindowWidth * Console.WindowHeight));
             Console.SetCursorPosition(0, 0);
-            Console.WriteLine($"[=============================== CRITICAL ERROR ===============================]ERROR MESSAGE: {Msg}\nERROR CODE: {ErrCode}");
+            Logger.Print($"[=============================== CRITICAL ERROR ===============================]ERROR MESSAGE: {Msg}\nERROR CODE: {ErrCode}", Logger.LogType.None);
             Console.SetCursorPosition(0, Console.WindowHeight - 1);
 
             int Second = RTC.Second;
@@ -37,6 +38,8 @@ namespace Phoenix
                         Thread.Sleep(200);
                     }
                 }
+
+                Thread.Sleep(25);
             }
         }
         #endregion
