@@ -2,8 +2,10 @@
 using Cosmos.System.FileSystem.VFS;
 using Cosmos.System.Network.Config;
 using Cosmos.System.Network.IPv4;
+using Cosmos.HAL.BlockDevice;
 using Cosmos.Core.Memory;
 using Cosmos.HAL;
+using System.Collections.Generic;
 using System.Threading;
 using System.IO;
 using System;
@@ -16,9 +18,15 @@ using PrismAPI.Hardware.GPU;
 using PrismAPI.Graphics;
 using libDotNetClr;
 using Console = System.Console;
+using LibDotNetParser;
+using Cosmos.System.FileSystem;
 
+/* NAMESPACES */
+#region NAMESPACES
 namespace Phoenix
 {
+    /* CLASSES */
+    #region CLASSES
     public class Kernel : Sys.Kernel
     {
         /* VARIABLES */
@@ -29,6 +37,7 @@ namespace Phoenix
         string CurrentWorkingDirectory = string.Empty;
         Canvas LogoBMP = Image.FromBitmap(LogoArray);
         Sys.FileSystem.CosmosVFS fs;
+        List<string> DriveMappings = new List<string>();
         #endregion
 
         /* FUNCTIONS */
@@ -85,43 +94,69 @@ namespace Phoenix
                 }
 
                 // Serial initialization
-                Logger.Print("Initializing serial...", Logger.LogType.Information);
+                Logger.Print("Initializing serial port COM1...", Logger.LogType.Information);
                 SerialPort.Enable(COMPort.COM1, BaudRate.BaudRate115200);
 
                 // FS Initializiation
                 Logger.Print("Initializing filesystem...", Logger.LogType.Information);
                 try
                 {
-                    fs = new Sys.FileSystem.CosmosVFS();
-                    VFSManager.RegisterVFS(fs);
-
-                    if (fs.Disks.Count > 0)
+                    if (BlockDevice.Devices.Count > 0)
                     {
+                        fs = new CosmosVFS();
+                        VFSManager.RegisterVFS(fs);
+
                         Logger.Print("Setting the current working directory...", Logger.LogType.Information);
 
                         foreach (var disk in fs.Disks)
                         {
-                            if (disk.Partitions.Count > 0)
+                            if (string.IsNullOrEmpty(CurrentWorkingDirectory))
                             {
-                                if (disk.Partitions[0].HasFileSystem && String.IsNullOrEmpty(disk.Partitions[0].RootPath) == false)
+                                if (disk.Partitions.Count > 0)
                                 {
-                                    CurrentWorkingDirectory = disk.Partitions[0].RootPath;
-                                    Directory.SetCurrentDirectory(CurrentWorkingDirectory);
-                                    Logger.Print($"Working directory is: \"{CurrentWorkingDirectory}\"", Logger.LogType.Information);
-                                    break;
+                                    if (disk.Partitions[0].HasFileSystem && String.IsNullOrEmpty(disk.Partitions[0].RootPath) == false)
+                                    {
+                                        CurrentWorkingDirectory = disk.Partitions[0].RootPath;
+                                        Directory.SetCurrentDirectory(CurrentWorkingDirectory);
+                                        Logger.Print($"Working directory is: \"{CurrentWorkingDirectory}\"", Logger.LogType.Information);
+                                    }
                                 }
+
+                                else
+                                {
+                                    Logger.Print("The main disk doesn't have a root path.", Logger.LogType.Warning);
+                                }
+
+                                Logger.Print("Creating drive mappings...", Logger.LogType.Information);
                             }
 
+                            int DriveIndex = fs.Disks.IndexOf(disk);
+
+                            if (disk.Type == BlockDeviceType.HardDrive)
+                            {
+                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/hdd{DriveIndex} (hard drive).", Logger.LogType.Information);
+                                DriveMappings.Add($"/drv/hdd{fs.Disks.IndexOf(disk)}");
+                            }
+                            else if (disk.Type == BlockDeviceType.RemovableCD)
+                            {
+                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/cdrom{DriveIndex} (cdrom).", Logger.LogType.Information);
+                                DriveMappings.Add($"/drv/cdrom{fs.Disks.IndexOf(disk)}");
+                            }
+                            else if (disk.Type == BlockDeviceType.Removable)
+                            {
+                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/rmv{DriveIndex} (remmovable).", Logger.LogType.Information);
+                                DriveMappings.Add($"/drv/rmv{fs.Disks.IndexOf(disk)}");
+                            }
                             else
                             {
-                                Logger.Print("The main disk doesn't have a root path.", Logger.LogType.Warning);
+                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/unknown{DriveIndex} (unknown drive type).", Logger.LogType.Warning);
+                                DriveMappings.Add($"/drv/unknown{fs.Disks.IndexOf(disk)}");
                             }
                         }
                     }
                     else
                     {
-                        Logger.Print("No functioning FAT32/UDF formatted disks are installed, You won't be able to save anything.\n\nPress any key to continue.", Logger.LogType.Warning);
-                        Console.ReadKey();
+                        Logger.Print("No supported IDE FAT32/UDF formatted disks are installed.", Logger.LogType.Warning);
                     }
                 }
                 catch(Exception ex)
@@ -291,7 +326,7 @@ namespace Phoenix
                 case "format":
                     if(fs.Disks.Count <= 0)
                     {
-                        Logger.Print("There are no disks to partition", Logger.LogType.Error);
+                        Logger.Print("There are no disks to format.\n", Logger.LogType.Error);
                         break;
                     }
 
@@ -325,7 +360,7 @@ namespace Phoenix
 
                     Logger.Print($"Formatting disk #{Disk} (partition #{Partition}, Quick format: {QuickFormat})...", Logger.LogType.Information);
                     fs.Disks[Disk].FormatPartition(Partition, "FAT32", QuickFormat);
-                    Logger.Print($"Formatting complete.", Logger.LogType.Information);
+                    Logger.Print($"Formatting complete.\n", Logger.LogType.Information);
 
                     break;
 
@@ -340,6 +375,12 @@ namespace Phoenix
 
 
                 /* MISC */
+                case "halt":
+                case "hlt":
+                    Logger.Print("The kernel has been halted.", Logger.LogType.Information);
+                    mStopped = true;
+                    break;
+
                 case "":
                     break;
 
@@ -362,25 +403,44 @@ namespace Phoenix
                                 if (Directory.Exists(FrameworkPath))
                                 {
                                     DotNetClr CLR = new DotNetClr(DotNetFile, FrameworkPath);
+                                    CLR.RegisterCustomInternalMethod("TestSuccess", TestSuccess);
+                                    CLR.RegisterCustomInternalMethod("TestsComplete", TestsComplete);
                                     CLR.Start();
+
+                                    //CLR.Start();
                                     goto StopSearchingDrives;
                                 }
                             }
                         }
-
-                    StopSearchingDrives:;
                     }
                     else
                     {
                         Logger.Print($"Invalid command: \"{Command}\"\n", Logger.LogType.Error);
                     }
 
+                    StopSearchingDrives:;
                     break;
             }
 
             // Call the garbage collector
             Heap.Collect();
         }
+
+        private static void TestSuccess(MethodArgStack[] Stack, ref MethodArgStack returnValue, DotNetMethod method)
+        {
+            Console.WriteLine($"{method.Parms[0].TypeInString} test succeeded");
+        }
+
+        private static void TestsComplete(MethodArgStack[] Stack, ref MethodArgStack returnValue, DotNetMethod method)
+        {
+            Console.WriteLine("All Tests Completed.");
+        }
+        #endregion
+
+        /* COROUTINES */
+        #region COROUTINES
         #endregion
     }
+    #endregion
 }
+#endregion
