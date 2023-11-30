@@ -1,25 +1,37 @@
-﻿using Cosmos.System.Network.IPv4.UDP.DHCP;
+﻿// Cosmos
+using Cosmos.System.Network.IPv4.UDP.DHCP;
 using Cosmos.System.FileSystem.VFS;
 using Cosmos.System.Network.Config;
 using Cosmos.System.Network.IPv4;
 using Cosmos.System.FileSystem;
 using Cosmos.HAL.BlockDevice;
 using Cosmos.Core.Memory;
+using Cosmos.Core;
 using Cosmos.HAL;
-using System.Collections.Generic;
+
+// System
 using System.Threading;
 using System.IO;
 using System;
+
+// Cosmos system
 using Sys = Cosmos.System;
+
+// Phoenix classes (memescoep)
 using Phoenix.Information;
 using Phoenix.CMD.Logging;
+
+// IL2CPU
 using IL2CPU.API.Attribs;
-using LibDotNetParser.CILApi;
+
+// PrismAPI (Terminal.cs)
 using PrismAPI.Hardware.GPU;
 using PrismAPI.Graphics;
-using libDotNetClr;
-using Console = System.Console;
+
+// DOtNetParser (MishaProductions)
+using LibDotNetParser.CILApi;
 using LibDotNetParser;
+using libDotNetClr;
 
 /* NAMESPACES */
 #region NAMESPACES
@@ -31,11 +43,21 @@ namespace Phoenix
     {
         /* VARIABLES */
         #region VARIABLES
+        // Arays
         [ManifestResourceStream(ResourceName = "Phoenix.Art.Logo.bmp")]
         static byte[] LogoArray;
 
-        string CurrentWorkingDirectory = string.Empty;
+        // Strings
+        public static string CurrentWorkingDirectory = string.Empty;
+
+        // Canvases
         Canvas LogoBMP = Image.FromBitmap(LogoArray);
+
+        // Floats
+        public static float TotalInstalledRAM = 0f;
+        public static float UsedRAM = 0f;
+
+        // Virtual filesystems
         public static CosmosVFS fs;
         #endregion
 
@@ -48,7 +70,7 @@ namespace Phoenix
                 if (!mStarted)
                 {
                     mStarted = true;
-                    Bootstrap.Init();
+                    Cosmos.HAL.Bootstrap.Init();
 
                     // Global init
                     Sys.Global.Init(GetTextScreen(), true, true, true, true);
@@ -77,8 +99,9 @@ namespace Phoenix
             {
                 Console.WriteLine($"\n\n\n[===== {OSInfo.Name} {OSInfo.Version} ({OSInfo.Copyright}) =====]");
                 Logger.Print("Kernel loaded and console initialized.", Logger.LogType.Information);
+                TotalInstalledRAM = CPU.GetAmountOfRAM() * 1024;
 
-                try
+                /*try
                 {
                     Display ScreenCanvas = Display.GetDisplay(640, 480);
                     ScreenCanvas.DrawImage(0, 0, LogoBMP, true);
@@ -90,7 +113,7 @@ namespace Phoenix
                 catch(Exception ex)
                 {
                     Logger.Print($"Boot graphics skipped: {ex.Message}", Logger.LogType.Warning);
-                }
+                }*/
 
                 // Serial initialization
                 Logger.Print("Initializing serial port COM1...", Logger.LogType.Information);
@@ -122,7 +145,7 @@ namespace Phoenix
 
                                 else
                                 {
-                                    Logger.Print("The main DriveIndex doesn't have a root path.", Logger.LogType.Warning);
+                                    Logger.Print($"Drive #{fs.Disks.IndexOf(disk)} doesn't have a filesystem or a root path.", Logger.LogType.Warning);
                                 }
                             }
                         }
@@ -140,7 +163,7 @@ namespace Phoenix
 
                 // Enable interrupts
                 Logger.Print("Enabling global interrupts...", Logger.LogType.Information);
-                Global.EnableInterrupts();
+                Cosmos.HAL.Global.EnableInterrupts();
 
                 // NIC Initialization
                 Logger.Print("Initializing NICs...", Logger.LogType.Information);
@@ -189,7 +212,15 @@ namespace Phoenix
         {
             try
             {
-                Console.Write($"({CurrentWorkingDirectory}) {OSInfo.Prompt}");
+                // Update the memory usage variable
+                UsedRAM = GCImplementation.GetUsedRAM() / 1024;
+
+                Console.Write($"(");
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write(CurrentWorkingDirectory);
+                Console.ResetColor();
+                Console.Write($") {OSInfo.Prompt}");
+
                 var Input = Console.ReadLine();
                 var Args = Input.Split(' ');
 
@@ -228,8 +259,27 @@ namespace Phoenix
                     Logger.Print(File.ReadAllText(Path.GetFullPath(Arguments[1])), Logger.LogType.None);
                     break;
 
+                case "ed":
+                case "edit":
+                case "change":
+                    if(Arguments.Length > 1)
+                    {
+                        MIV.StartMIV(Path.GetFullPath(Arguments[1]));
+                    }
+                    else
+                    {
+                        MIV.StartMIV(null);
+                    }
+
+                    break;
+
                 case "rm":
                 case "del":
+                    if (Arguments[1] == "-rf")
+                    {
+                        Directory.Delete(Path.GetFullPath(Arguments[2]));
+                    }
+
                     File.Delete(Path.GetFullPath(Arguments[1]));
                     break;
 
@@ -237,6 +287,21 @@ namespace Phoenix
                 case "copy":
                 case "duplicate":
                     File.Copy(Path.GetFullPath(Arguments[1]), Path.GetFullPath(Arguments[2]));
+                    break;
+
+                case "mv":
+                case "move":
+                case "transfer":
+                    File.Copy(Path.GetFullPath(Arguments[1]), Path.GetFullPath(Arguments[2]));
+                    File.Delete(Path.GetFullPath(Arguments[1]));
+                    break;
+
+                case "mkf":
+                    File.Create(Path.GetFullPath(Arguments[1]));
+                    break;
+
+                case "mkdir":
+                    Directory.CreateDirectory(Path.GetFullPath(Arguments[1]));
                     break;
 
                 case "ls":
@@ -333,7 +398,7 @@ namespace Phoenix
 
                     Logger.Print($"Formatting disk #{Disk} (partition #{Partition}, Quick format: {QuickFormat})...", Logger.LogType.Information);
                     fs.Disks[Disk].FormatPartition(Partition, "FAT32", QuickFormat);
-                    Logger.Print($"Formatting complete.\n", Logger.LogType.Information);
+                    Logger.Print($"\nFormatting complete, restart the server for the changes to take effect.\n", Logger.LogType.Information);
                     break;
 
 
@@ -342,6 +407,43 @@ namespace Phoenix
                 case "clear":
                 case "cls":
                     Console.Clear();
+                    break;
+
+
+
+                /* SYSTEM */
+                case "sysinfo":
+                case "systeminfo":
+                case "sysinformation":
+                case "systeminformation":
+                    int CDCount = 0, HDDCount = 0, RVMCount = 0, OtherCount = 0;
+
+                    foreach(var drive in fs.Disks)
+                    {
+                        if(drive.Type == BlockDeviceType.HardDrive)
+                        {
+                            HDDCount++;
+                        }
+                        else if (drive.Type == BlockDeviceType.RemovableCD)
+                        {
+                            CDCount++;
+                        }
+                        else if (drive.Type == BlockDeviceType.Removable)
+                        {
+                            RVMCount++;
+                        }
+                        else
+                        {
+                            OtherCount++;
+                        }
+                    }
+
+                    Logger.Print($"[===== {OSInfo.Name} {OSInfo.Version} ({OSInfo.Copyright}) =====]\n" +
+                        $"CPU: {CPU.GetCPUBrandString()}\n" +
+                        $"CPU Vendor: {CPU.GetCPUVendorName()}\n" +
+                        $"CPU Uptime: {CPU.GetCPUUptime()}\n" +
+                        $"RAM: {TotalInstalledRAM} KB ({UsedRAM} KB used, {(UsedRAM / TotalInstalledRAM) * 100}%)\n" +
+                        $"Installed drives: {fs.Disks.Count} (HDD: {HDDCount}, CD: {CDCount}, RVM: {RVMCount}, OTHER: {OtherCount})\n", Logger.LogType.None);
                     break;
 
 
