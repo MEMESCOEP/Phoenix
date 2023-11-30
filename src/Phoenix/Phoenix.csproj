@@ -40,4 +40,8 @@
         <PackageReference Include="PrismAPI" Version="1.0.3" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="IO\Filesystem\" />
+    </ItemGroup>
+
 </Project>

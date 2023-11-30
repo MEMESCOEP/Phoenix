@@ -2,6 +2,7 @@
 using Cosmos.System.FileSystem.VFS;
 using Cosmos.System.Network.Config;
 using Cosmos.System.Network.IPv4;
+using Cosmos.System.FileSystem;
 using Cosmos.HAL.BlockDevice;
 using Cosmos.Core.Memory;
 using Cosmos.HAL;
@@ -19,7 +20,6 @@ using PrismAPI.Graphics;
 using libDotNetClr;
 using Console = System.Console;
 using LibDotNetParser;
-using Cosmos.System.FileSystem;
 
 /* NAMESPACES */
 #region NAMESPACES
@@ -36,8 +36,7 @@ namespace Phoenix
 
         string CurrentWorkingDirectory = string.Empty;
         Canvas LogoBMP = Image.FromBitmap(LogoArray);
-        Sys.FileSystem.CosmosVFS fs;
-        List<string> DriveMappings = new List<string>();
+        public static CosmosVFS fs;
         #endregion
 
         /* FUNCTIONS */
@@ -105,7 +104,6 @@ namespace Phoenix
                     {
                         fs = new CosmosVFS();
                         VFSManager.RegisterVFS(fs);
-
                         Logger.Print("Setting the current working directory...", Logger.LogType.Information);
 
                         foreach (var disk in fs.Disks)
@@ -124,33 +122,8 @@ namespace Phoenix
 
                                 else
                                 {
-                                    Logger.Print("The main disk doesn't have a root path.", Logger.LogType.Warning);
+                                    Logger.Print("The main DriveIndex doesn't have a root path.", Logger.LogType.Warning);
                                 }
-
-                                Logger.Print("Creating drive mappings...", Logger.LogType.Information);
-                            }
-
-                            int DriveIndex = fs.Disks.IndexOf(disk);
-
-                            if (disk.Type == BlockDeviceType.HardDrive)
-                            {
-                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/hdd{DriveIndex} (hard drive).", Logger.LogType.Information);
-                                DriveMappings.Add($"/drv/hdd{fs.Disks.IndexOf(disk)}");
-                            }
-                            else if (disk.Type == BlockDeviceType.RemovableCD)
-                            {
-                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/cdrom{DriveIndex} (cdrom).", Logger.LogType.Information);
-                                DriveMappings.Add($"/drv/cdrom{fs.Disks.IndexOf(disk)}");
-                            }
-                            else if (disk.Type == BlockDeviceType.Removable)
-                            {
-                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/rmv{DriveIndex} (remmovable).", Logger.LogType.Information);
-                                DriveMappings.Add($"/drv/rmv{fs.Disks.IndexOf(disk)}");
-                            }
-                            else
-                            {
-                                Logger.Print($"Disk #{DriveIndex} is mapped to: /drv/unknown{DriveIndex} (unknown drive type).", Logger.LogType.Warning);
-                                DriveMappings.Add($"/drv/unknown{fs.Disks.IndexOf(disk)}");
                             }
                         }
                     }
@@ -252,7 +225,7 @@ namespace Phoenix
                 /* FILESYSTEM */
                 case "cat":
                 case "read":
-                    Logger.Print(File.ReadAllText(Arguments[1]), Logger.LogType.None);
+                    Logger.Print(File.ReadAllText(Path.GetFullPath(Arguments[1])), Logger.LogType.None);
                     break;
 
                 case "rm":
@@ -270,7 +243,7 @@ namespace Phoenix
                 case "dir":
                     Logger.Print($"[== {CurrentWorkingDirectory} ==]", Logger.LogType.None);
 
-                    foreach(var entry in Directory.GetFiles(CurrentWorkingDirectory))
+                    foreach (var entry in Directory.GetFiles(CurrentWorkingDirectory))
                     {
                         Logger.Print($"[FILE] {entry}", Logger.LogType.None);
                     }
@@ -319,8 +292,8 @@ namespace Phoenix
                     }
 
                     dir = Path.GetFullPath(dir);
-                    CurrentWorkingDirectory = dir;
                     Directory.SetCurrentDirectory(dir);
+                    CurrentWorkingDirectory = dir;
                     break;
 
                 case "format":
@@ -361,7 +334,6 @@ namespace Phoenix
                     Logger.Print($"Formatting disk #{Disk} (partition #{Partition}, Quick format: {QuickFormat})...", Logger.LogType.Information);
                     fs.Disks[Disk].FormatPartition(Partition, "FAT32", QuickFormat);
                     Logger.Print($"Formatting complete.\n", Logger.LogType.Information);
-
                     break;
 
 
