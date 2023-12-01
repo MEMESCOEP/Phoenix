@@ -59,6 +59,9 @@ namespace Phoenix
 
         // Virtual filesystems
         public static CosmosVFS fs;
+
+        // Date & time
+        public static DateTime KernelStartTime;
         #endregion
 
         /* FUNCTIONS */
@@ -67,6 +70,8 @@ namespace Phoenix
         {
             try
             {
+                KernelStartTime = DateTime.Now;
+
                 if (!mStarted)
                 {
                     mStarted = true;
@@ -439,6 +444,8 @@ namespace Phoenix
                     }
 
                     Logger.Print($"[===== {OSInfo.Name} {OSInfo.Version} ({OSInfo.Copyright}) =====]\n" +
+                        $"Kernel start time: {KernelStartTime.ToString()}\n" +
+                        $"System uptime: {(DateTime.Now - KernelStartTime).ToString()}\n" +
                         $"CPU: {CPU.GetCPUBrandString()}\n" +
                         $"CPU Vendor: {CPU.GetCPUVendorName()}\n" +
                         $"CPU Uptime: {CPU.GetCPUUptime()}\n" +
