@@ -32,6 +32,7 @@ using PrismAPI.Graphics;
 using LibDotNetParser.CILApi;
 using LibDotNetParser;
 using libDotNetClr;
+using Phoenix.IO.Networking;
 
 /* NAMESPACES */
 #region NAMESPACES
@@ -49,6 +50,7 @@ namespace Phoenix
 
         // Strings
         public static string CurrentWorkingDirectory = string.Empty;
+        public static string FrameworkPath = String.Empty;
 
         // Canvases
         Canvas LogoBMP = Image.FromBitmap(LogoArray);
@@ -62,6 +64,9 @@ namespace Phoenix
 
         // Date & time
         public static DateTime KernelStartTime;
+
+        // Booleans
+        public static bool IsDebug = false;
         #endregion
 
         /* FUNCTIONS */
@@ -122,7 +127,7 @@ namespace Phoenix
 
                 // Serial initialization
                 Logger.Print("Initializing serial port COM1...", Logger.LogType.Information);
-                SerialPort.Enable(COMPort.COM1, BaudRate.BaudRate115200);
+                SerialPort.Enable(COMPort.COM1, BaudRate.BaudRate9600);
 
                 // FS Initializiation
                 Logger.Print("Initializing filesystem...", Logger.LogType.Information);
@@ -145,6 +150,7 @@ namespace Phoenix
                                         CurrentWorkingDirectory = disk.Partitions[0].RootPath;
                                         Directory.SetCurrentDirectory(CurrentWorkingDirectory);
                                         Logger.Print($"Working directory is: \"{CurrentWorkingDirectory}\"", Logger.LogType.Information);
+                                        break;
                                     }
                                 }
 
@@ -165,10 +171,6 @@ namespace Phoenix
                     Logger.Print($"Disk init error: {ex.Message}\n\nPress any key to continue.", Logger.LogType.Error);
                     Console.ReadKey();
                 }
-
-                // Enable interrupts
-                Logger.Print("Enabling global interrupts...", Logger.LogType.Information);
-                Cosmos.HAL.Global.EnableInterrupts();
 
                 // NIC Initialization
                 Logger.Print("Initializing NICs...", Logger.LogType.Information);
@@ -205,6 +207,40 @@ namespace Phoenix
                     Logger.Print("There are no supported NICs installed.", Logger.LogType.Warning);
                 }
 
+                // Find the DotNetParser framework
+                Logger.Print($"Searching for the DotNetParser framework on local storage...", Logger.LogType.Information);
+
+                if (string.IsNullOrEmpty(CurrentWorkingDirectory) == false)
+                {
+                    foreach (var disk in fs.Disks)
+                    {
+                        foreach (var partition in disk.Partitions)
+                        {
+                            if (partition.HasFileSystem == false)
+                            {
+                                continue;
+                            }
+
+                            FrameworkPath = $"{partition.MountedFS.GetRootDirectory().mFullPath}\\framework\\";
+
+                            if (Directory.Exists(FrameworkPath))
+                            {
+                                Logger.Print($"Framework path is: \"{FrameworkPath}\"", Logger.LogType.Information);
+                                goto StopSearchingForFramework;
+                            }
+                        }
+                    }
+                }
+
+                Logger.Print($"Failed to find DotNetParser framework.", Logger.LogType.Error);
+                FrameworkPath = string.Empty;
+
+                StopSearchingForFramework:;
+
+                // Enable interrupts
+                Logger.Print("Enabling global interrupts...", Logger.LogType.Information);
+                Cosmos.HAL.Global.EnableInterrupts();
+
                 Logger.Print("Init done.", Logger.LogType.Information);
             }
             catch (Exception ex)
@@ -218,6 +254,7 @@ namespace Phoenix
             try
             {
                 // Update the memory usage variable
+                Logger.Print($"Calculating used RAM amount...", Logger.LogType.Debug);
                 UsedRAM = GCImplementation.GetUsedRAM() / 1024;
 
                 Console.Write($"(");
@@ -229,6 +266,7 @@ namespace Phoenix
                 var Input = Console.ReadLine();
                 var Args = Input.Split(' ');
 
+                Logger.Print($"Handling command (\"{Args[0]}\")...", Logger.LogType.Debug);
                 HandleCommand(Args[0], Args);
             }
             catch (Exception ex)
@@ -367,13 +405,15 @@ namespace Phoenix
                     break;
 
                 case "format":
-                    if(fs.Disks.Count <= 0)
+                    Logger.Print($"Checking drive count...", Logger.LogType.Debug);
+                    if (fs.Disks.Count <= 0)
                     {
                         Logger.Print("There are no disks to format.\n", Logger.LogType.Error);
                         break;
                     }
 
-                    foreach(var disk in fs.Disks)
+                    Logger.Print($"Displaying disk information...", Logger.LogType.Debug);
+                    foreach (var disk in fs.Disks)
                     {
                         Console.WriteLine($"[== Disk #{fs.Disks.IndexOf(disk)} ==]");
                         disk.DisplayInformation();
@@ -385,7 +425,8 @@ namespace Phoenix
                     int Partition = 0;
                     bool QuickFormat = false;
 
-                    if(fs.Disks[Disk].Partitions.Count <= 0)
+                    Logger.Print($"Checking drive partition count...", Logger.LogType.Debug);
+                    if (fs.Disks[Disk].Partitions.Count <= 0)
                     {
                         Console.WriteLine($"This disk does not have any partitions, so one will be created.");
                         Logger.Print($"Creating partition on disk #{Disk}...", Logger.LogType.Information);
@@ -408,6 +449,45 @@ namespace Phoenix
 
 
 
+                /* NETWORK */
+                case "ping":
+                    if (Arguments.Length <= 1 || string.IsNullOrWhiteSpace(Arguments[1]))
+                    {
+                        Logger.Print($"An IP address must be specified.\n\n", Logger.LogType.Error);
+                        break;
+                    }
+
+                    if (AddressUtils.IsIPv4AddressValid(Arguments[1]) == false)
+                    {
+                        Logger.Print($"\"{Arguments[1]}\" is not a valid IP address.\n\n", Logger.LogType.Error);
+                        break;
+                    }
+
+                    Logger.Print($"Pinging {Arguments[1]}:", Logger.LogType.Information);
+                    int SuccessCounter = 0;
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float PingTime = Network.ICMPPing(AddressUtils.StringToAddress(Arguments[1]));
+
+                        if (PingTime >= 0)
+                        {
+                            SuccessCounter++;
+                            Logger.Print($"\t[{i + 1}] Ping succeeded in {PingTime} milliseconds.", Logger.LogType.None);
+                            Thread.Sleep(250);
+                        }
+
+                        else
+                        {
+                            Logger.Print($"\tPing failed.", Logger.LogType.None);
+                        }
+                    }
+
+                    Logger.Print($"{SuccessCounter}/4 pings succeeded. ({(float)(SuccessCounter / 4f) * 100f}%)\n", Logger.LogType.Information);
+                    break;
+
+
+
                 /* CONSOLE */
                 case "clear":
                 case "cls":
@@ -423,7 +503,8 @@ namespace Phoenix
                 case "systeminformation":
                     int CDCount = 0, HDDCount = 0, RVMCount = 0, OtherCount = 0;
 
-                    foreach(var drive in fs.Disks)
+                    Logger.Print($"Searching for drives...", Logger.LogType.Debug);
+                    foreach (var drive in fs.Disks)
                     {
                         if(drive.Type == BlockDeviceType.HardDrive)
                         {
@@ -470,28 +551,19 @@ namespace Phoenix
                     {
                         DotNetFile DotNetFile = new DotNetFile(Path.GetFullPath(Arguments[0]));
 
-                        foreach(var disk in fs.Disks)
+                        if (string.IsNullOrEmpty(FrameworkPath) == false && Directory.Exists(FrameworkPath))
                         {
-                            foreach(var partition in disk.Partitions)
-                            {
-                                if (partition.HasFileSystem == false)
-                                {
-                                    continue;
-                                }
+                            Logger.Print($"Creating CLR...", Logger.LogType.Debug);
+                            DotNetClr CLR = new DotNetClr(DotNetFile, FrameworkPath);
 
-                                var FrameworkPath = $"{partition.MountedFS.GetRootDirectory().mFullPath}\\framework\\";
+                            Logger.Print($"Registering internal CLR methods...", Logger.LogType.Debug);
+                            CLR.RegisterCustomInternalMethod("TestSuccess", TestSuccess);
+                            CLR.RegisterCustomInternalMethod("TestsComplete", TestsComplete);
 
-                                if (Directory.Exists(FrameworkPath))
-                                {
-                                    DotNetClr CLR = new DotNetClr(DotNetFile, FrameworkPath);
-                                    CLR.RegisterCustomInternalMethod("TestSuccess", TestSuccess);
-                                    CLR.RegisterCustomInternalMethod("TestsComplete", TestsComplete);
-                                    CLR.Start();
+                            Logger.Print($"Starting program execution...", Logger.LogType.Debug);
+                            CLR.Start();
 
-                                    //CLR.Start();
-                                    goto StopSearchingDrives;
-                                }
-                            }
+                            Logger.Print($"Program finished.", Logger.LogType.Debug);
                         }
                     }
                     else
@@ -499,12 +571,22 @@ namespace Phoenix
                         Logger.Print($"Invalid command: \"{Command}\"\n", Logger.LogType.Error);
                     }
 
-                    StopSearchingDrives:;
                     break;
             }
 
             // Call the garbage collector
-            Heap.Collect();
+            Logger.Print($"Calling the garbage collector and freeing pages...", Logger.LogType.Debug);
+            int CollectedObjects = Heap.Collect();
+            Logger.Print($"Freed {CollectedObjects} objects", Logger.LogType.Debug);
+
+            // Heap.Collect leaves behind empty SMT pages, so we'll need to clean them up
+            int FreedPages = HeapSmall.PruneSMT();
+            Logger.Print($"Pruned {FreedPages} pages", Logger.LogType.Debug);
+
+            // Some debug stuff
+            Logger.Print($"The garbage collector was called {RAT.GCTriggered} times", Logger.LogType.Debug);
+            Logger.Print($"Free pages: {RAT.FreePageCount}", Logger.LogType.Debug);
+            Logger.Print($"Min free pages: {RAT.MinFreePages}", Logger.LogType.Debug);
         }
 
         private static void TestSuccess(MethodArgStack[] Stack, ref MethodArgStack returnValue, DotNetMethod method)

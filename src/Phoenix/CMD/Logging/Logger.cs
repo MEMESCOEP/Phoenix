@@ -17,7 +17,23 @@ namespace Phoenix.CMD.Logging
         // Print a message to the console with the specified log level
         public static void Print(string Msg, LogType Type)
         {
-            if(Type == LogType.None)
+            if(Type == LogType.Debug)
+            {
+                if (Kernel.IsDebug)
+                { 
+                    Console.Write("[");
+                    SerialPort.SendString($"[");
+
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Console.Write($"DEBUG@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
+                    SerialPort.SendString($"DEBUG@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
+
+                    Console.ResetColor();
+                    Console.WriteLine($"] >> {Msg}");
+                    SerialPort.SendString($"] >> {Msg}\n");
+                }
+            }
+            else if (Type == LogType.None)
             {
                 Console.WriteLine(Msg);
                 SerialPort.SendString($"{Msg}\n");
@@ -45,12 +61,6 @@ namespace Phoenix.CMD.Logging
                         Console.ForegroundColor = ConsoleColor.Red;
                         Console.Write($"ERROR@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
                         SerialPort.SendString($"ERROR@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
-                        break;
-
-                    case LogType.Debug:
-                        Console.ForegroundColor = ConsoleColor.Magenta;
-                        Console.Write($"DEBUG@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
-                        SerialPort.SendString($"DEBUG@{RTC.Hour}:{RTC.Minute}:{RTC.Second}");
                         break;
                 }
 
